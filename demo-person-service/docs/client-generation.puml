@@ -1,0 +1,32 @@
+title JENKINS-API-CLIENTs-GENERATION
+
+participant gw
+
+participant gw-client
+participant gitlab
+
+participant jenkins
+participant nexus
+
+
+
+gw->gw:new commit
+gw->gitlab:push 1.5.0-SNAPSHOT
+gitlab->jenkins:build gw
+gw<-jenkins:build
+gw->gw: generate openapi.json 
+gw->gw:checkOpenApiChanged
+alt changed
+gw->gw: change api version (EG: 1.0.1-SNAPSHOT) in application.yml
+gw->gw: change api version  in openapi.json
+gw->gw: store new openapi.json in resources
+gw->gw: build
+end
+gw-->jenkins:
+jenkins->nexus:push gw 1.5.0-SNAPSHOT
+jenkins->gw-client:build gw-client
+gw-client->gw-client: unpack gw 1.5.0-SNAPSHOT openapi.json
+gw-client->gw-client: change pom.xml version to openaapi.json's version
+gw-client->gw-client: build
+gw-client-->jenkins:
+jenkins->nexus:push gw-client 1.0.1-SNAPSHOT

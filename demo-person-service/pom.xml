@@ -10,7 +10,9 @@
 	</parent>
 	<description>Demo project for Spring Boot with openapi 3 documentation</description>
 	<artifactId>demo-person-service</artifactId>
-
+	<properties>
+		<profile.api-docs>,api-docs</profile.api-docs>
+	</properties>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -38,13 +40,54 @@
 	</dependencies>
 	<build>
 		<plugins>
+			<!--
+				this starts the server with a local profile and api-docs
+				during the integrations tests the springdoc-openapi-maven-plugin will generate the
+				json openapi spec
+			-->
+			<plugin>
+				<groupId>com.bazaarvoice.maven.plugins</groupId>
+				<artifactId>process-exec-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>start-config-sever</id>
+						<phase>pre-integration-test</phase>
+						<goals>
+							<goal>start</goal>
+						</goals>
+						<configuration>
+							<name>api-docs-server</name>
+							<workingDir>../</workingDir>
+							<waitForInterrupt>false</waitForInterrupt>
+							<healthcheckUrl>http://localhost:8080/v3/api-docs</healthcheckUrl>
+							<arguments>
+								<argument>mvn</argument>
+								<argument>spring-boot:run</argument>
+								<argument>-Dspring-boot.run.profiles=local${profile.api-docs}</argument>
+							</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>stop-all</id>
+						<phase>post-integration-test</phase>
+						<goals>
+							<goal>stop-all</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>org.springdoc</groupId>
 				<artifactId>springdoc-openapi-maven-plugin</artifactId>
-			</plugin>
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>generate-openapi</id>
+						<phase>integration-test</phase>
+						<goals>
+							<goal>generate</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>

@@ -5,47 +5,51 @@
   if(git.commit.length != 1 || ! includes [skip-ci]) then (yes)
     if(project-service1.version is SNAPSHOT) then (yes)
       :git show main:src/main/resources/openapi.json > stableOpenapi.json;
+      :git show main:pom.xml > stablePom.xml;
     else (no)
       :cp src/main/resources/openapi.json stableOpenapi.json;
     endif
-    :stableApiVersion:= readJson(stableOpenapi.json).version;
+    :stableApiVersion:= readJson(stableOpenapi.json).version || readPom(stablePom.xml).version;
     :build project-service1
       -> generates target/openapi.json 
       -> generates openDiffoutput:= target/open-diff.txt  against  stableOpenapi.json;
     fork
       :docker, build, push artifacts and deploy;
     fork again
-      partition api-client bump and build {
-        if(openDiffoutput includes differences) then (yes)
-          partition calcNewApiVersion{
-            :whatToBump := getWhatToBump (openDiffoutput) => (MAJOR|minor|patch);
-            :newApiVersion := bump(stableApiVersion,whatToBump) + "-SNAPSHOT";
+      :whatToBump := getWhatToBump (openDiffoutput) => (MAJOR|minor|patch);
+      if(whatToBump  == none) then (yes)
+        stop
+      else (no)
+        partition calcNewApiVersion{
+          :newApiVersion := bumpVersion(stableApiVersion,whatToBump) + "-SNAPSHOT";
+        }
+        :apply newApiVersion on the application.yml ;
+        :apply newApiVersion on openapi.json;  
+        :copy target/openapi.json in src/main/resources/openapi.json;
+        if(git diff) then (yes) 
+          :git commit "[jenkins][skip-ci] bump api version to ${newApiVersion}"
+            git push ;                    
+          partition dir ( project-service1-client ) {
+          :checkout BRANCH_NAME of project-service1-client in dir  project-service1-client 
+            cd project-service1-client;
+          :copy ../target/openapi.json in src/main/resources/openapi.json
+            set project maven version to newApiVersion;
+          :git commit "[jenkins] bump api version to ${newApiVersion}"
+            git push ;                    
           }
-          :apply newApiVersion on the application.yml ;
-          :apply newApiVersion on openapi.json;  
-          :copy target/openapi.json in src/main/resources/openapi.json;
-          if(git diff) then (yes) 
-            :git commit "[jenkins][skip-ci] bump api version to ${newApiVersion}"
-             git push ;                    
-            :checkout project-service1-client in dir  project-service1-client 
-             cd project-service1-client;
-            :git commit "[jenkins][skip-ci] bump api version to ${newApiVersion}"
-             git push ;                    
-            fork
-              |jenkins:project-service1-client|
-                :build;
-                :push-to-nexus;
-                end
-            fork again
-              |jenkins:project-service1|
-              : NOOP;
-            end fork
-          else (no)
-          endif
+          fork
+            |jenkins:project-service1|
+            : NOOP;
+          fork again
+            |jenkins:project-service1-client|
+              :build;
+              :push-to-nexus;
+              end
+            |jenkins:project-service1|
+          end fork
         else (no)
-          stop
         endif
-      }
+      endif
     end fork
   else (no)
   endif

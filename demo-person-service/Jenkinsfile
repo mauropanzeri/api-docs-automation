@@ -126,7 +126,7 @@ enum ChangeType{
   patch
 }
 
-def whatToBump(json){
+def getWhatToBump(openApiDiffJson){
   if(json.different){
     if (json.incompatible){
       return ChangeType.major
@@ -144,10 +144,10 @@ def JSONstringMajor='{"newEndpoints":[],"changedElements":[null],"compatible":fa
 def JSONstringMinor='{"newEndpoints":[{"pathUrl":"/animals","method":"POST","path":{"post":{"tags":["person-controller"],"operationId":"animals","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}},"required":true},"responses":{"500":{"description":"Internal Server Error","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Problem","exampleSetFlag":false},"exampleSetFlag":false}}},"400":{"description":"Bad Request","content":{"*/*":{"schema":{"$ref":"#/components/schemas/ErrorMessage","exampleSetFlag":false},"exampleSetFlag":false}}},"200":{"description":"OK","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}}}}}},"operation":{"tags":["person-controller"],"operationId":"animals","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}},"required":true},"responses":{"500":{"description":"Internal Server Error","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Problem","exampleSetFlag":false},"exampleSetFlag":false}}},"400":{"description":"Bad Request","content":{"*/*":{"schema":{"$ref":"#/components/schemas/ErrorMessage","exampleSetFlag":false},"exampleSetFlag":false}}},"200":{"description":"OK","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}}}}}}],"missingEndpoints":[],"changedOperations":[],"changedSchemas":[],"deprecatedEndpoints":[],"changedElements":[null],"unchanged":false,"compatible":true,"incompatible":false,"different":true}'
 def JSONstringPatch='{"newEndpoints":[],"missingEndpoints":[],"changedOperations":[],"changedSchemas":[],"deprecatedEndpoints":[],"changedElements":[null],"unchanged":false,"compatible":true,"incompatible":false,"different":true}'
 
-println(whatToBump(readJSONString(JSONstringUnchanged)))
-println(whatToBump(readJSONString(JSONstringMajor)))
-println(whatToBump(readJSONString(JSONstringMinor)))
-println(whatToBump(readJSONString(JSONstringPatch)))
+println(getWhatToBump(readJSONString(JSONstringUnchanged)))
+println(getWhatToBump(readJSONString(JSONstringMajor)))
+println(getWhatToBump(readJSONString(JSONstringMinor)))
+println(getWhatToBump(readJSONString(JSONstringPatch)))
 
 
 // -------------------------

@@ -182,3 +182,16 @@ println bumpVersion(version, ChangeType.major) // Output: 2.0.0-SNAPSHOT
 println bumpVersion(version, ChangeType.minor) // Output: 1.3.0-SNAPSHOT
 println bumpVersion(version, ChangeType.patch) // Output: 1.2.4-SNAPSHOT
 
+// -----
+def delayIfRunning(String branchToCheck){
+    def mainJobName = 'your-multibranch-pipeline-job/'+branchToCheck
+    def mainJob = Jenkins.instance.getItemByFullName(mainJobName)
+    def isMainRunning = mainJob.builds.find { it.isBuilding() }
+
+    if (isMainRunning) {
+        echo "${branchToCheck} branch pipeline is currently running. Delaying the pipeline..."
+        sleep(time: 180, unit: 'SECONDS') 
+    } else {
+        echo "${branchToCheck} branch pipeline is not running. Proceeding with the pipeline..."
+    }
+}

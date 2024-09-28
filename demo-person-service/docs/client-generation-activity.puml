@@ -2,7 +2,9 @@
 |gitlab|
   :git push project-service1 ;
 |jenkins:project-service1|
-  if(git.commit.length != 1 || ! includes [skip-ci]) then (yes)
+  if(git.commit.length == 1 && includes [skip-ci]) then (yes)
+    stop
+  else (no)
     if(project-service1.version is SNAPSHOT) then (yes)
       :git show main:src/main/resources/openapi.json > stableOpenapi.json;
       :git show main:pom.xml > stablePom.xml;
@@ -28,22 +30,25 @@
         :copy target/openapi.json in src/main/resources/openapi.json;
         if(git diff) then (yes) 
           :git commit "[jenkins][skip-ci] bump api version to ${newApiVersion}"
-            git push ;                    
-          partition dir ( project-service1-client ) {
-          :checkout BRANCH_NAME of project-service1-client in dir  project-service1-client 
-            cd project-service1-client;
-          :copy ../target/openapi.json in src/main/resources/openapi.json
-            set project maven version to newApiVersion;
-          :git commit "[jenkins] bump api version to ${newApiVersion}"
-            git push ;                    
-          }
+            git push ;    
+          :trigger jenkins:project-service1-client on the same branch passing openapi.json;
           fork
             |jenkins:project-service1|
             : NOOP;
           fork again
             |jenkins:project-service1-client|
-              :build;
-              :push-to-nexus;
+              if(git.commit.length == 1 && includes [skip-ci]) then (yes)
+                end
+              else (no)
+                if (param.openapi.json) then (yes)
+                  :copy openapi.json in src/main/resources/openapi.json
+                    set project maven version to newApiVersion;
+                  :git commit "[jenkins][skip-cli] bump api version to ${newApiVersion}"
+                    git push ;                    
+                endif
+                :build;
+                :push-to-nexus;
+              endif
               end
             |jenkins:project-service1|
           end fork
@@ -51,7 +56,6 @@
         endif
       endif
     end fork
-  else (no)
   endif
   stop
 @enduml

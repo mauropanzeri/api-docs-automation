@@ -2,9 +2,9 @@
 |gitlab|
   :git push project-service1 ;
 |jenkins:project-service1|
-  if(git.commit.length != 1 && ! includes [skip-ci]) then (yes)
+  if(git.commit.length != 1 || ! includes [skip-ci]) then (yes)
     if(project-service1.version is SNAPSHOT) then (yes)
-      :checkout src/main/resources/openapi.json from git branch main => stableOpenapi.json;
+      :git show main:src/main/resources/openapi.json > stableOpenapi.json;
     else (no)
       :cp src/main/resources/openapi.json stableOpenapi.json;
     endif

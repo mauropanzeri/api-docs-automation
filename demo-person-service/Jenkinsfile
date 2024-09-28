@@ -1,0 +1,184 @@
+pipeline {
+    agent any
+    environment {
+        GITLAB_PROJECT = 'project-service1'
+        CLIENT_PROJECT = 'project-service1-client'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                script {
+                    if (gitCommitLength() != 1 && !gitIncludesSkipCI()) {
+                        if (isSnapshotVersion()) {
+                            checkout scm
+                            def stableOpenapiJson = readFile 'src/main/resources/openapi.json'
+                        } else {
+                            sh 'cp src/main/resources/openapi.json stableOpenapi.json'
+                        }
+                        def stableApiVersion = readJson(stableOpenapiJson).version
+                        buildProject()
+                        generateTargetOpenapiJson()
+                        generateOpenDiffOutput(stableOpenapiJson)
+                        parallel(
+                            dockerBuildPushDeploy: {
+                                dockerBuildPushDeploy()
+                            },
+                            apiClientBumpAndBuild: {
+                                if (openDiffOutputIncludesDifferences()) {
+                                    def whatToBump = getWhatToBump()
+                                    def newApiVersion = bumpVersion(stableApiVersion, whatToBump) + '-SNAPSHOT'
+                                    applyNewApiVersion(newApiVersion)
+                                    if (gitDiff()) {
+                                        commitAndPush(newApiVersion)
+                                        checkoutClientProject()
+                                        commitAndPushClient(newApiVersion)
+                                        buildAndPushClient()
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+def gitCommitLength() {
+    // Implement logic to get git commit length
+}
+
+def gitIncludesSkipCI() {
+    // Implement logic to check if commit includes [skip-ci]
+}
+
+def isSnapshotVersion() {
+    // Implement logic to check if version is SNAPSHOT
+}
+
+def readJson(file) {
+    // Implement logic to read JSON from file
+}
+
+def buildProject() {
+    // Implement logic to build project
+}
+
+def generateTargetOpenapiJson() {
+    // Implement logic to generate target/openapi.json
+}
+
+def generateOpenDiffOutput(stableOpenapiJson) {
+    // Implement logic to generate openDiffOutput against stableOpenapi.json
+}
+
+def openDiffOutputIncludesDifferences() {
+    // Implement logic to check if openDiffOutput includes differences
+}
+
+def bumpVersion(stableApiVersion, whatToBump) {
+    // Implement logic to bump version
+}
+
+def applyNewApiVersion(newApiVersion) {
+    // Implement logic to apply new API version on application.yml and openapi.json
+}
+
+def gitDiff() {
+    // Implement logic to check git diff
+}
+
+def commitAndPush(newApiVersion) {
+    // Implement logic to commit and push changes
+}
+
+def checkoutClientProject() {
+    // Implement logic to checkout client project
+}
+
+def commitAndPushClient(newApiVersion) {
+    // Implement logic to commit and push changes in client project
+}
+
+def buildAndPushClient() {
+    // Implement logic to build and push client project to Nexus
+}
+
+def dockerBuildPushDeploy() {
+    // Implement logic to build, push artifacts, and deploy using Docker
+}
+
+
+// ---------------
+
+import groovy.json.JsonSlurper
+
+def readJSONString(String jsonString) {
+    def jsonSlurper = new JsonSlurper()
+    return jsonSlurper.parseText(jsonString)
+}
+
+
+enum ChangeType{
+  none,
+  major,
+  minor,
+  patch
+}
+
+def whatToBump(json){
+  if(json.different){
+    if (json.incompatible){
+      return ChangeType.major
+    } else if(json.compatible && json.newEndpoints != null && json.newEndpoints.size() > 0) {
+      return ChangeType.minor
+    } 
+    return ChangeType.patch
+  }
+  
+  return ChangeType.none
+}
+
+def JSONstringUnchanged='{"newEndpoints":[],"changedElements":[null],"compatible":false,"unchanged":false,"incompatible":true,"different":false}'
+def JSONstringMajor='{"newEndpoints":[],"changedElements":[null],"compatible":false,"unchanged":false,"incompatible":true,"different":true}'
+def JSONstringMinor='{"newEndpoints":[{"pathUrl":"/animals","method":"POST","path":{"post":{"tags":["person-controller"],"operationId":"animals","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}},"required":true},"responses":{"500":{"description":"Internal Server Error","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Problem","exampleSetFlag":false},"exampleSetFlag":false}}},"400":{"description":"Bad Request","content":{"*/*":{"schema":{"$ref":"#/components/schemas/ErrorMessage","exampleSetFlag":false},"exampleSetFlag":false}}},"200":{"description":"OK","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}}}}}},"operation":{"tags":["person-controller"],"operationId":"animals","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}},"required":true},"responses":{"500":{"description":"Internal Server Error","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Problem","exampleSetFlag":false},"exampleSetFlag":false}}},"400":{"description":"Bad Request","content":{"*/*":{"schema":{"$ref":"#/components/schemas/ErrorMessage","exampleSetFlag":false},"exampleSetFlag":false}}},"200":{"description":"OK","content":{"*/*":{"schema":{"$ref":"#/components/schemas/Person","exampleSetFlag":false},"exampleSetFlag":false}}}}}}],"missingEndpoints":[],"changedOperations":[],"changedSchemas":[],"deprecatedEndpoints":[],"changedElements":[null],"unchanged":false,"compatible":true,"incompatible":false,"different":true}'
+def JSONstringPatch='{"newEndpoints":[],"missingEndpoints":[],"changedOperations":[],"changedSchemas":[],"deprecatedEndpoints":[],"changedElements":[null],"unchanged":false,"compatible":true,"incompatible":false,"different":true}'
+
+println(whatToBump(readJSONString(JSONstringUnchanged)))
+println(whatToBump(readJSONString(JSONstringMajor)))
+println(whatToBump(readJSONString(JSONstringMinor)))
+println(whatToBump(readJSONString(JSONstringPatch)))
+
+
+// -------------------------
+
+def bumpVersion(String version, ChangeType level) {
+    def (major, minor, patch, suffix) = version.tokenize('.-')
+    major = major.toInteger()
+    minor = minor.toInteger()
+    patch = patch.toInteger()
+
+    switch(level) {
+        case ChangeType.major:
+            major++
+            minor = 0
+            patch = 0
+            break
+        case ChangeType.minor:
+            minor++
+            patch = 0
+            break
+        case ChangeType.patch:
+            patch++
+            break
+    }
+
+    return suffix ? "$major.$minor.$patch-$suffix" : "$major.$minor.$patch"
+}
+
+// Example usage
+def version = "1.2.3-SNAPSHOT"
+println bumpVersion(version, ChangeType.major) // Output: 2.0.0-SNAPSHOT
+println bumpVersion(version, ChangeType.minor) // Output: 1.3.0-SNAPSHOT
+println bumpVersion(version, ChangeType.patch) // Output: 1.2.4-SNAPSHOT
+

@@ -20,6 +20,10 @@ public class Person {
 
 	@Size(min = 2, max = 50)
 	@NotBlank
+	private String nickName;
+
+	@Size(min = 2, max = 50)
+	@NotBlank
 	private String lastName;
 
 	@Pattern(regexp = ".+@.+\\..+", message = "Please provide a valid email address")
@@ -66,6 +70,15 @@ public class Person {
 	public void setEmail2(String email2) {
 		this.email2 = email2;
 	}
+
+		public String getNickname() {
+		return nickName;
+	}
+
+	public void setNickName(String nickName) {
+		this.nickName = nickName;
+	}
+
 
 	public String getFirstName() {
 		return firstName;

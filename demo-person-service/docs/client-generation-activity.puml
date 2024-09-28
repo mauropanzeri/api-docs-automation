@@ -1,0 +1,53 @@
+@startuml "client generation"
+|gitlab|
+  :git push project-service1 ;
+|jenkins:project-service1|
+  if(git.commit.length != 1 && ! includes [skip-ci]) then (yes)
+    if(project-service1.version is SNAPSHOT) then (yes)
+      :checkout src/main/resources/openapi.json from git branch main => stableOpenapi.json;
+    else (no)
+      :cp src/main/resources/openapi.json stableOpenapi.json;
+    endif
+    :stableApiVersion:= readJson(stableOpenapi.json).version;
+    :build project-service1
+      -> generates target/openapi.json 
+      -> generates openDiffoutput:= target/open-diff.txt  against  stableOpenapi.json;
+    fork
+      :docker, build, push artifacts and deploy;
+    fork again
+      partition api-client bump and build {
+        if(openDiffoutput includes differences) then (yes)
+          partition calcNewApiVersion{
+            :whatToBump := getWhatToBump (openDiffoutput) => (MAJOR|minor|patch);
+            :newApiVersion := bump(stableApiVersion,whatToBump) + "-SNAPSHOT";
+          }
+          :apply newApiVersion on the application.yml ;
+          :apply newApiVersion on openapi.json;  
+          :copy target/openapi.json in src/main/resources/openapi.json;
+          if(git diff) then (yes) 
+            :git commit "[jenkins][skip-ci] bump api version to ${newApiVersion}"
+             git push ;                    
+            :checkout project-service1-client in dir  project-service1-client 
+             cd project-service1-client;
+            :git commit "[jenkins][skip-ci] bump api version to ${newApiVersion}"
+             git push ;                    
+            fork
+              |jenkins:project-service1-client|
+                :build;
+                :push-to-nexus;
+                end
+            fork again
+              |jenkins:project-service1|
+              : NOOP;
+            end fork
+          else (no)
+          endif
+        else (no)
+          stop
+        endif
+      }
+    end fork
+  else (no)
+  endif
+  stop
+@enduml

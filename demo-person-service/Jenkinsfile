@@ -126,7 +126,7 @@ enum ChangeType{
   patch
 }
 
-def getWhatToBump(openApiDiffJson){
+def getWhatToBumpSemantic(openApiDiffJson){
   if(json.different){
     if (json.incompatible){
       return ChangeType.major
@@ -152,7 +152,7 @@ println(getWhatToBump(readJSONString(JSONstringPatch)))
 
 // -------------------------
 
-def bumpVersion(String version, ChangeType level) {
+def getBumpedVersion(String version, ChangeType level) {
     def (major, minor, patch, suffix) = version.tokenize('.-')
     major = major.toInteger()
     minor = minor.toInteger()
@@ -175,6 +175,8 @@ def bumpVersion(String version, ChangeType level) {
 
     return suffix ? "$major.$minor.$patch-$suffix" : "$major.$minor.$patch"
 }
+
+
 
 // Example usage
 def version = "1.2.3-SNAPSHOT"

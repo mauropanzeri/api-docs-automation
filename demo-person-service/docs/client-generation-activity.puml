@@ -14,11 +14,11 @@
     :stableApiVersion:= readJson(stableOpenapi.json).version || readPom(stablePom.xml).version;
     :build project-service1
       -> generates target/openapi.json 
-      -> generates openDiffoutput:= target/open-diff.txt  against  stableOpenapi.json;
+      -> generates target/openapi.diff.json  against  stableOpenapi.json;
     fork
       :docker, build, push artifacts and deploy;
     fork again
-      :whatToBump := getWhatToBumpSemantic (openDiffoutput) => (MAJOR|minor|patch);
+      :whatToBump := getWhatToBumpSemantic (target/openapi.diff.json) => (MAJOR|minor|patch);
       if(whatToBump  == none) then (yes)
         stop
       (no) elseif(project.version is SNAPSHOT) then (no)

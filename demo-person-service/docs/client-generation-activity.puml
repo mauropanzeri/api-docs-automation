@@ -19,9 +19,7 @@
       :docker, build, push artifacts and deploy;
     fork again
       :whatToBump := getWhatToBumpSemantic (target/openapi.diff.json) => (MAJOR|minor|patch);
-      if(whatToBump  == none) then (yes)
-        stop
-      (no) elseif(project.version is SNAPSHOT) then (no)
+      if(whatToBump  != none && project.version is SNAPSHOT) then (yes)
         if (semanticBump) then (yes)
           :newApiVersion := getBumpedVersion(stableApiVersion,whatToBump) + '-SNAPSHOT';
         else (no)

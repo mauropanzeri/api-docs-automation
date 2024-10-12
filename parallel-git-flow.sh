@@ -173,7 +173,7 @@ git_flow_release_start () {
     if ! git_current_branch_is_release ;    then
       git checkout $master_branch && git pull origin $master_branch || return 2
       git checkout $develop_branch && git pull origin $develop_branch || return 3
-      git checkout $release_prefix/$expected_version 2>&1 || git frs 
+      git checkout $release_prefix/$expected_version 2>/dev/null || git frs 
     fi
     git_current_branch_is_release
     return $?

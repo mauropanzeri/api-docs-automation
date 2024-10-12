@@ -18,7 +18,7 @@ declare_main_global_props () {
   my_projects=(
     ["com.mycompany.my-lib1"]="project-lib1"
     ["com.mycompany.my-lib2"]="project-lib2"
-    ["com.mycompany.my-lib2"]="project-lib3"
+    ["com.mycompany.my-lib3"]="project-lib3"
   )
 }
 
@@ -160,6 +160,7 @@ git_flow_release_start () {
 
     local master_branch=$(git config gitflow.branch.master)
     local develop_branch=$(git config gitflow.branch.develop)
+    local release_prefix=$(git config gitflow.prefix.release)
 
     git checkout $develop_branch
     local curr_version=$(get_current_version)
@@ -172,7 +173,7 @@ git_flow_release_start () {
     if ! git_current_branch_is_release ;    then
       git checkout $master_branch && git pull origin $master_branch || return 2
       git checkout $develop_branch && git pull origin $develop_branch || return 3
-      git frs 
+      git checkout $release_prefix/$expected_version 2>&1 || git frs 
     fi
     git_current_branch_is_release
     return $?

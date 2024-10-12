@@ -130,6 +130,7 @@ check_and_build_dependencies() {
     done
 
   fi
+  mvn test
   return $?
 }
 

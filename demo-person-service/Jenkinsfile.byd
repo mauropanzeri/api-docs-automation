@@ -1,0 +1,75 @@
+@Library('commons-libraries@v2.0.0') _
+
+node("platform-tlm-17") {
+
+    properties([disableConcurrentBuilds()])
+
+    gitCheckout()
+    def pom = readMavenPom file: 'pom.xml'
+    def currentVersion = ("${env.BRANCH_NAME}" == "master" || "${env.BRANCH_NAME}" == "main")
+                                 ? pom.version
+                                 : "${env.BRANCH_NAME}"
+
+
+    stage('Check Java') {
+        sh "java -version"
+    }
+
+    if ("${env.BRANCH_NAME}" == "master" || "${env.BRANCH_NAME}" == "main" || "${env.BRANCH_NAME}" == "null") {
+        versionCheck("maven")
+    }
+
+    stage('Clean') {
+        sh "chmod +x mvnw"
+        sh "./mvnw -ntp clean"
+    }
+
+    stage('Check dependencies') {
+        withMaven(maven: 'maven-3.6.3', mavenSettingsConfig: 'c54df556-7275-44d0-9245-139e17b798b6') {
+            try {
+                sh "mvn -U --batch-mode dependency:purge-local-repository clean compile"
+            } catch(err) {
+                throw err
+            }
+        }
+    }
+
+    stage('Backend tests') {
+        withMaven(maven: 'maven-3.6.3', mavenSettingsConfig: 'c54df556-7275-44d0-9245-139e17b798b6') {
+            try {
+                sh "./mvnw -ntp verify"
+            } catch(err) {
+                throw err
+            } finally {
+                junit '**/target/surefire-reports/TEST-*.xml,**/target/failsafe-reports/TEST-*.xml'
+            }
+        }
+    }
+
+    stage('Packaging') {
+        withMaven(maven: 'maven-3.6.3', mavenSettingsConfig: 'c54df556-7275-44d0-9245-139e17b798b6') {
+            sh "./mvnw -U -ntp verify deploy \"-Pprod,mysql,postgres\" -DskipTests"
+        }
+    }
+
+    stage('Docker build & push') {
+        dockerPush(dockerBuild("studioform/platform-services"), currentVersion)
+    }
+
+    stage('Docker ROSA publishing') {
+        dockerPushROSA(dockerBuildROSA("byd-img-ica-repo/platform-services"), currentVersion)
+    }
+
+    def environments = [];
+    switch("${env.BRANCH_NAME}") {
+      case "preprod":
+        environments = ["ppd"]
+        break
+      default:
+        environments = getROSAEnvironments()
+    }
+
+    helmDeploy(["name" : "tlm-services", "namespace" : "byd-jsp-ica", "environments": environments])
+
+    cleanWs()
+}

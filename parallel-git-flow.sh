@@ -3,10 +3,24 @@
 script_name=$(basename $0)
 this_script=$(realpath $0)
 root_dir=$(dirname $this_script)
-log_file=
 # Declare an associative array
 declare -A my_projects
 
+####################################################################################################
+####################################################################################################
+####################################################################################################
+
+declare_main_global_props () {
+  project=$(basename $1)
+  project_path=$(realpath $1)
+  expected_version=$2
+  # Initialize the associative array. Proejct => path
+  my_projects=(
+    ["com.mycompany.my-lib1"]="project-lib1"
+    ["com.mycompany.my-lib2"]="project-lib2"
+    ["com.mycompany.my-lib2"]="project-lib3"
+  )
+}
 
 log () {
   echo "[INFO][$project] $@"
@@ -144,15 +158,17 @@ git_flow_release_start () {
       return 1
     fi 
 
+    local master_branch=$(git config gitflow.branch.master)
+    local develop_branch=$(git config gitflow.branch.develop)
     local curr_version=$(get_current_version)
+    git checkout $develop_branch
+
     if ! does_match_expected "$curr_version" "$expected_version" ; then
       log_err "project version <${curr_version}> does not match expected version <${expected_version}>" 
       return 5
     fi
 
     if ! git_current_branch_is_release ;    then
-      local master_branch=$(git config gitflow.branch.master)
-      local develop_branch=$(git config gitflow.branch.master)
       git checkout $master_branch && git pull origin $master_branch || return 2
       git checkout $develop_branch && git pull origin $develop_branch || return 3
       git frs 
@@ -221,17 +237,6 @@ check_args () {
   fi
 }
 
-declare_main_global_props () {
-  project=$(basename $1)
-  project_path=$(realpath $1)
-  expected_version=$2
-  # Initialize the associative array. Proejct => path
-  my_projects=(
-    ["com.mycompany.my-lib1"]="project-lib1"
-    ["com.mycompany.my-lib2"]="project-lib2"
-  )
-}
-
 # Main script
 main() {
   check_args $@
@@ -241,6 +246,10 @@ main() {
 
   run_close_release_exclusively
 }
+
+####################################################################################################
+####################################################################################################
+####################################################################################################
 
 # Run the main script with the provided argument
 main $1 $2

@@ -160,9 +160,10 @@ git_flow_release_start () {
 
     local master_branch=$(git config gitflow.branch.master)
     local develop_branch=$(git config gitflow.branch.develop)
-    git checkout $develop_branch
 
-    local curr_version=$(get_current_version
+    git checkout $develop_branch
+    local curr_version=$(get_current_version)
+
     if ! does_match_expected "$curr_version" "$expected_version" ; then
       log_err "project version <${curr_version}> does not match expected version <${expected_version}>" 
       return 5

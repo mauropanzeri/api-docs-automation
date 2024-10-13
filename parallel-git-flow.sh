@@ -3,7 +3,9 @@
 script_name=$(basename $0)
 this_script=$(realpath $0)
 root_dir=$(dirname $this_script)
+lock_dir="${root_dir}/var/locks"
 # Declare an associative array
+declare -A my_projects_repo
 declare -A my_projects
 
 ####################################################################################################
@@ -15,6 +17,11 @@ declare_main_global_props () {
   project_path=$(realpath $1)
   expected_version=$2
   # Initialize the associative array. Proejct => path
+  my_projects_repo=(
+    ["com.mycompany.my-lib1"]=".project-lib1.git"
+    ["com.mycompany.my-lib2"]=".project-lib2.git"
+    ["com.mycompany.my-lib3"]=".project-lib3.git"
+  )
   my_projects=(
     ["com.mycompany.my-lib1"]="project-lib1"
     ["com.mycompany.my-lib2"]="project-lib2"
@@ -103,7 +110,7 @@ check_and_build_dependency() {
     if is_our_project $dep_project $dep_version ; then 
       local dep_project_path="$root_dir/${my_projects[$dep_project]}"
       log launching build $dep_project_path in parallel
-      build_dependency $dep_project_path $dep_version &
+      build_dependency $dep_project_path $dep_version
     else 
       log_err "cant build $dependency_definition package unknown" >&2
       return 1
@@ -122,15 +129,16 @@ check_and_build_dependencies() {
     log_wrn "$missing_dependencies"  
     log_wrn "#################" 
     for dep in $missing_dependencies; do
-      check_and_build_dependency $dep
+      check_and_build_dependency $dep &
     done
+    wait
 
-    for dep in $missing_dependencies; do
-      wait_for_dependency_version $dep
-    done
+    # for dep in $missing_dependencies; do
+    #   wait_for_dependency_version $dep
+    # done
 
   fi
-  mvn test
+  mvn -ntp verify -P-webapp
   return $?
 }
 
@@ -163,7 +171,7 @@ git_flow_release_start () {
     local develop_branch=$(git config gitflow.branch.develop)
     local release_prefix=$(git config gitflow.prefix.release)
 
-    git checkout $develop_branch
+    git checkout $develop_branch && git pull origin $develop_branch || return 3
     local curr_version=$(get_current_version)
 
     if ! does_match_expected "$curr_version" "$expected_version" ; then
@@ -173,7 +181,14 @@ git_flow_release_start () {
 
     if ! git_current_branch_is_release ;    then
       git checkout $master_branch && git pull origin $master_branch || return 2
-      git checkout $develop_branch && git pull origin $develop_branch || return 3
+      master_version=$(get_current_version)
+
+      higher_version=$(echo -e "${master_version}\n${expected_version}" | sort -V -r | head -n 1)
+      if [[ "$higher_version" != "$expected_version" ]]; then
+        log_err "<$expected_version> is lower than <$higher_version> " 
+        return 4
+      fi
+
       git checkout $release_prefix$expected_version 2>/dev/null || git frs 
     fi
     git_current_branch_is_release
@@ -203,33 +218,34 @@ run_close_release () {
 
 # run the main 
 run_close_release_exclusively () {
-    lockfile=".${script_name}.lock"
-    statusfile=".${script_name}.status"
+  mkdir -p "${lock_dir}"
+  lockfile="${lock_dir}/.${project}.lock"
+  statusfile="${lock_dir}/.${project}.status"
 
-    # Use flock to ensure only one process can create the lock file
-    exec 200>"$lockfile"
+  # Use flock to ensure only one process can create the lock file
+  exec 200>"$lockfile"
 
-    if flock -n 200; then
-        # Run the common task
-        if run_close_release; then
-            echo "success" > "$statusfile"
-        else
-            echo "failure" > "$statusfile"
-        fi
-        # Release the lock
-        flock -u 200
-    else
-        # Wait for the common task to complete
-        log_wrn "Waiting another instance of run_close_release to complete..."
-        flock 200
-        # Check the status of the common task
-        if [ "$(cat $statusfile)" == "failure" ]; then
-            log_err "Common task failed, exiting."
-            exit 1
-        else
-            log "Common task completed successfully by another process."
-        fi
-    fi
+  if flock -n 200; then
+      # Run the common task
+      if run_close_release; then
+          echo "success" > "$statusfile"
+      else
+          echo "failure" > "$statusfile"
+      fi
+      # Release the lock
+      flock -u 200
+  else
+      # Wait for the common task to complete
+      log_wrn "Waiting another instance of run_close_release to complete..."
+      flock 200
+      # Check the status of the common task
+      if [ "$(cat $statusfile)" == "failure" ]; then
+          log_err "Common task failed, exiting."
+          exit 1
+      else
+          log "Common task completed successfully by another process."
+      fi
+  fi
 }
 
 

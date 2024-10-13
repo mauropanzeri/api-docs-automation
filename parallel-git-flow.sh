@@ -133,9 +133,9 @@ check_and_build_dependencies() {
     done
     wait
 
-    # for dep in $missing_dependencies; do
-    #   wait_for_dependency_version $dep
-    # done
+    for dep in $missing_dependencies; do
+      wait_for_dependency_version $dep
+    done
 
   fi
   mvn -ntp verify -P-webapp

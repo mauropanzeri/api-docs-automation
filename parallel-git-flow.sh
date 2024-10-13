@@ -81,6 +81,14 @@ does_match_expected () {
 ## Package manager
 #########
 
+
+mvn_install () {
+  # on real execution we should only rely in git frf to push 
+  echo "Emulating jenkins build"
+  sleep 20
+  mvn install
+}
+
 # Function to check if a version is available in the Maven repository
 is_version_available() {
   local project=$1
@@ -271,16 +279,24 @@ git_flow_hotfix_finish () {
   return $?
 }
 
-mvn_install () {
-  # on real execution we should only rely in git frf to push 
-  echo "Emulating jenkins build"
-  sleep 20
-  mvn install
-}
-
 #########
 ## Git flow coordination
 #########
+
+run_close_release () {
+  git_flow_release_check_and_start || return 1
+  # Check and push dependencies if necessary
+  check_and_build_dependencies || return 2
+  git_flow_release_finish
+}
+
+
+run_close_hotfix () {
+  git_flow_hotfix_check
+  # Check and push dependencies if necessary
+  check_and_build_dependencies || return 2
+  git_flow_hotfix_finish
+}
 
 run_close_version () {
   if is_version_number_hotfix $expected_version ; then
@@ -290,22 +306,6 @@ run_close_version () {
     log "closing hotfix $expected_version"
     run_close_hotfix
   fi
-}
-
-run_close_hotfix () {
-  git_flow_hotfix_check
-  # Check and push dependencies if necessary
-  check_and_build_dependencies || return 2
-  git_flow_hotfix_finish
-  # TODO git_flow_release_finish
-}
-
-run_close_release () {
-  git_flow_release_check_and_start || return 1
-  # Check and push dependencies if necessary
-  check_and_build_dependencies || return 2
-  git_flow_release_finish
-  # TODO git_flow_release_finish
 }
 
 # run the main 

@@ -12,6 +12,9 @@ declare -A my_projects
 ####################################################################################################
 ####################################################################################################
 
+#########
+## Script handling
+#########
 declare_main_global_props () {
   project=$(basename $1)
   project_path=$(realpath $1)
@@ -29,6 +32,18 @@ declare_main_global_props () {
   )
 }
 
+check_args () {
+  if [ -z "$1" ] || [ -z "$2" ] || [ ! -d "$1" ]; then
+    log_err "Usage: $0 <project_dir> <expected_version>"
+    exit 1
+  fi
+}
+
+#########
+## Logging
+#########
+
+
 log () {
   echo "[INFO][$project] $@"
 }
@@ -40,6 +55,31 @@ log_wrn () {
 log_err () {
   echo "[ERROR][$project] $@" >&1
 }
+
+#########
+## misc
+#########
+
+
+# 1.2.X X == 0 => hotfix
+is_version_number_hotfix () {
+  version=$1
+  # Extract the patch level
+  patch_level=$(echo $version | cut -d. -f3 | cut -d- -f1)
+  
+  ! [[ -z "$patch_level" || "$patch_level" -eq 0 ]]
+  return  $?
+}
+
+# check if 2 version are identical excpect for the suffix
+does_match_expected () {
+  [[ "$1" =~ ^${2}(-.*)?$ ]]
+  return $?
+}
+
+#########
+## Package manager
+#########
 
 # Function to check if a version is available in the Maven repository
 is_version_available() {
@@ -142,6 +182,11 @@ check_and_build_dependencies() {
   return $?
 }
 
+#########
+## Git
+#########
+
+
 git_get_current_branch () {
   git rev-parse --abbrev-ref HEAD
 }
@@ -155,46 +200,76 @@ get_current_version () {
    mvn help:evaluate -Dexpression=project.version -q -DforceStdout
 }
 
-does_match_expected () {
-  [[ "$1" =~ ^${2}(-.*)?$ ]]
+
+git_flow_hotfix_check () {
+  local master_branch=$(git config gitflow.branch.master)
+  local hotfix_prefix=$(git config gitflow.prefix.hotfix)
+  local hotfix_branch="${hotfix_prefix}${expected_version}"
+  git checkout $hotfix_prefix  || return 3
+  git pull origin $hotfix_branch
+
+  # on uncommitted changes exit 
+  if ! git diff-index --quiet HEAD -- ;    then
+    log_wrn "there are local modifications"  
+    return 1
+  fi   
+
+  local curr_version=$(get_current_version)
+  if ! does_match_expected "$curr_version" "$expected_version" ; then
+    log_err "project version <${curr_version}> does not match expected version <${expected_version}>" 
+    return 5
+  fi
+}
+
+git_flow_release_check_and_start () {
+  local master_branch=$(git config gitflow.branch.master)
+  local develop_branch=$(git config gitflow.branch.develop)
+  local release_prefix=$(git config gitflow.prefix.release)
+
+  git checkout $develop_branch && git pull origin $develop_branch || return 3
+  
+  # on uncommitted changes exit 
+  if ! git diff-index --quiet HEAD -- ;    then
+    log_wrn "there are local modifications"  
+    return 1
+  fi 
+
+  local curr_version=$(get_current_version)
+  if ! does_match_expected "$curr_version" "$expected_version" ; then
+    log_err "project version <${curr_version}> does not match expected version <${expected_version}>" 
+    return 5
+  fi
+
+  if ! git_current_branch_is_release ;    then
+    git checkout $master_branch && git pull origin $master_branch || return 2
+    master_version=$(get_current_version)
+
+    higher_version=$(echo -e "${master_version}\n${expected_version}" | sort -V -r | head -n 1)
+    if [[ "$higher_version" != "$expected_version" ]]; then
+      log_err "<${expected_version}> is lower than <${higher_version}> " 
+      return 4
+    fi
+
+    # if the release branch of the expected version exists, use that, otherwise
+    # start the release
+    git checkout "${release_prefix}${expected_version}" 2>/dev/null \
+      || git frs 
+  fi
+  git_current_branch_is_release
   return $?
 }
 
-git_flow_release_start () {
-    # on uncommitted changes exit 
-    if ! git diff-index --quiet HEAD -- ;    then
-      log_wrn "there are local modifications"  
-      return 1
-    fi 
 
-    local master_branch=$(git config gitflow.branch.master)
-    local develop_branch=$(git config gitflow.branch.develop)
-    local release_prefix=$(git config gitflow.prefix.release)
-
-    git checkout $develop_branch && git pull origin $develop_branch || return 3
-    local curr_version=$(get_current_version)
-
-    if ! does_match_expected "$curr_version" "$expected_version" ; then
-      log_err "project version <${curr_version}> does not match expected version <${expected_version}>" 
-      return 5
-    fi
-
-    if ! git_current_branch_is_release ;    then
-      git checkout $master_branch && git pull origin $master_branch || return 2
-      master_version=$(get_current_version)
-
-      higher_version=$(echo -e "${master_version}\n${expected_version}" | sort -V -r | head -n 1)
-      if [[ "$higher_version" != "$expected_version" ]]; then
-        log_err "<$expected_version> is lower than <$higher_version> " 
-        return 4
-      fi
-
-      git checkout $release_prefix$expected_version 2>/dev/null || git frs 
-    fi
-    git_current_branch_is_release
-    return $?
+git_flow_release_finish () {
+  mvn_install && git frf
+  return $?
 }
 
+
+git_flow_hotfix_finish () {
+  mvn_install && git fhf
+  return $?
+}
 
 mvn_install () {
   # on real execution we should only rely in git frf to push 
@@ -203,21 +278,38 @@ mvn_install () {
   mvn install
 }
 
-git_flow_release_finish () {
-  mvn_install && git frf
-  return $?
+#########
+## Git flow coordination
+#########
+
+run_close_version () {
+  if is_version_number_hotfix $expected_version ; then
+    log "closing release $expected_version"
+    run_close_release
+  else
+    log "closing hotfix $expected_version"
+    run_close_hotfix
+  fi
+}
+
+run_close_hotfix () {
+  git_flow_hotfix_check
+  # Check and push dependencies if necessary
+  check_and_build_dependencies || return 2
+  git_flow_hotfix_finish
+  # TODO git_flow_release_finish
 }
 
 run_close_release () {
-  git_flow_release_start $project || return 1
+  git_flow_release_check_and_start || return 1
   # Check and push dependencies if necessary
-  check_and_build_dependencies $project || return 2
+  check_and_build_dependencies || return 2
   git_flow_release_finish
   # TODO git_flow_release_finish
 }
 
 # run the main 
-run_close_release_exclusively () {
+run_close_version_exclusively () {
   mkdir -p "${lock_dir}"
   lockfile="${lock_dir}/.${project}.lock"
   statusfile="${lock_dir}/.${project}.status"
@@ -227,7 +319,7 @@ run_close_release_exclusively () {
 
   if flock -n 200; then
       # Run the common task
-      if run_close_release; then
+      if run_close_version; then
           echo "success" > "$statusfile"
       else
           echo "failure" > "$statusfile"
@@ -236,7 +328,7 @@ run_close_release_exclusively () {
       flock -u 200
   else
       # Wait for the common task to complete
-      log_wrn "Waiting another instance of run_close_release to complete..."
+      log_wrn "Waiting another instance of run_close_version to complete..."
       flock 200
       # Check the status of the common task
       if [ "$(cat $statusfile)" == "failure" ]; then
@@ -249,12 +341,6 @@ run_close_release_exclusively () {
 }
 
 
-check_args () {
-  if [ -z "$1" ] || [ -z "$2" ] || [ ! -d "$1" ]; then
-    log_err "Usage: $0 <project_dir> <expected_version>"
-    exit 1
-  fi
-}
 
 # Main script
 main() {
@@ -263,7 +349,7 @@ main() {
   cd $project_path
   log "in $project expecting to compile <${expected_version}>"
 
-  run_close_release_exclusively
+  run_close_version_exclusively
 }
 
 ####################################################################################################

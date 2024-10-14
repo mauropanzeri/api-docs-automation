@@ -241,6 +241,15 @@ get_current_version () {
 }
 
 
+is_curr_version_compatible (){
+  local curr_version=$(get_current_version)
+  if ! does_match_expected "$curr_version" "$expected_version" ; then
+    log_err "project version <${curr_version}> from branch $(git_get_current_branch) does not match expected version <${expected_version}>" 
+    return 1
+  fi
+  return 0
+}
+
 git_flow_hotfix_check () {
   local master_branch=$(git config gitflow.branch.master)
   local hotfix_prefix=$(git config gitflow.prefix.hotfix)
@@ -254,11 +263,8 @@ git_flow_hotfix_check () {
     return 1
   fi   
 
-  local curr_version=$(get_current_version)
-  if ! does_match_expected "$curr_version" "$expected_version" ; then
-    log_err "project version <${curr_version}> does not match expected version <${expected_version}>" 
-    return 5
-  fi
+  is_curr_version_compatible || return 5
+  return 0
 }
 
 git_flow_release_check_and_start () {
@@ -266,34 +272,33 @@ git_flow_release_check_and_start () {
   local develop_branch=$(git config gitflow.branch.develop)
   local release_prefix=$(git config gitflow.prefix.release)
 
-  _git checkout $develop_branch && _git pull origin $develop_branch || return 3
-  
-  # on uncommitted changes exit 
-  if ! git diff-index --quiet HEAD -- ;    then
-    log_wrn "there are local modifications"  
-    return 1
-  fi 
 
-  local curr_version=$(get_current_version)
-  if ! does_match_expected "$curr_version" "$expected_version" ; then
-    log_err "project version <${curr_version}> does not match expected version <${expected_version}>" 
-    return 5
-  fi
-
-  if ! git_current_branch_is_release ;    then
+  # if the release branch of the expected version exists, use that, otherwise
+  # start the release
+  _git checkout "${release_prefix}${expected_version}" 2>/dev/null
+  if git_current_branch_is_release ;    then
+    is_curr_version_compatible || return 5
+  else
     _git checkout $master_branch && _git pull origin $master_branch || return 2
-    master_version=$(get_current_version)
 
+    master_version=$(get_current_version)
     higher_version=$(echo -e "${master_version}\n${expected_version}" | sort -V -r | head -n 1)
+
     if [[ "$higher_version" != "$expected_version" ]]; then
-      log_err "<${expected_version}> is lower than <${higher_version}> " 
+      log_err "<${expected_version}> is lower than <${higher_version}> from master branch." 
       return 4
     fi
 
-    # if the release branch of the expected version exists, use that, otherwise
-    # start the release
-    _git checkout "${release_prefix}${expected_version}" 2>/dev/null \
-      || _git frs 
+    _git checkout $develop_branch && _git pull origin $develop_branch || return 3    
+    # on uncommitted changes exit 
+    if ! git diff-index --quiet HEAD -- ;    then
+      log_wrn "there are local modifications"  
+      return 1
+    fi 
+
+    is_curr_version_compatible || return 5
+
+    _git frs 
   fi
   git_current_branch_is_release
   return $?

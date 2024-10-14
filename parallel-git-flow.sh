@@ -319,7 +319,7 @@ run_close_release () {
   git_flow_release_check_and_start || return 1
   # Check and push dependencies if necessary
   check_and_build_dependencies || return 2
-  git_flow_release_finish
+  git_flow_release_finish || return 3
 }
 
 
@@ -327,7 +327,7 @@ run_close_hotfix () {
   git_flow_hotfix_check
   # Check and push dependencies if necessary
   check_and_build_dependencies || return 2
-  git_flow_hotfix_finish
+  git_flow_hotfix_finish  || return 3
 }
 
 run_close_version () {

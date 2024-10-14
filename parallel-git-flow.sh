@@ -56,10 +56,25 @@ logged_command () {
   return ${PIPESTATUS[0]}
 }
 
+_date () {
+  date +"%Y-%m-%dT%H:%M:%S"
+}
+
 _echo () {
-  logged_command "[${project}]" echo $@
+  logged_command "[${project}][$(_date)]" echo $@
   return $?
 }
+
+_mvn () {
+  logged_command "[${project}][$(_date)][mvn]" mvn $@
+  return $? 
+}
+
+_git () {
+  logged_command "[${project}][$(_date)][git]" git $@
+  return $? 
+}
+
 
 log () {
   _echo "[INFO] $@"
@@ -71,17 +86,6 @@ log_wrn () {
 
 log_err () {
   _echo "[ERROR] $@" >&2
-}
-
-
-_mvn () {
-  logged_command "[${project}][mvn]" mvn $@
-  return $? 
-}
-
-_git () {
-  logged_command "[${project}][git]" git $@
-  return $? 
 }
 
 #########
@@ -133,7 +137,7 @@ wait_for_dependency_version() {
   local dep_version=$(echo $dependency_definition | cut -d':' -f4)
   local dep_project="${dep_group}.${dep_artifact}"
 
-  local max_attempts=20
+  local max_attempts=30
   local attempt=1
   local sleep_time=30
 

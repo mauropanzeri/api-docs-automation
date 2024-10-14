@@ -44,16 +44,44 @@ check_args () {
 #########
 
 
+logged_command () {
+  prefix=$1
+  shift
+  command=$@
+  # Run the command and prefix each line of its output
+  $command 2>&1 | while IFS= read -r line; do
+    echo "$prefix$line"
+  done
+  # Capture the exit code of the command
+  return ${PIPESTATUS[0]}
+}
+
+_echo () {
+  logged_command "[${project}]" echo $@
+  return $?
+}
+
 log () {
-  echo "[INFO][$project] $@"
+  _echo "[INFO] $@"
 }
 
 log_wrn () {
-  echo "[WARNING][$project] $@" >&1
+  _echo "[WARNING] $@" >&2
 }
 
 log_err () {
-  echo "[ERROR][$project] $@" >&1
+  _echo "[ERROR] $@" >&2
+}
+
+
+_mvn () {
+  logged_command "[${project}][mvn]" mvn $@
+  return $? 
+}
+
+_git () {
+  logged_command "[${project}][git]" git $@
+  return $? 
 }
 
 #########
@@ -84,16 +112,16 @@ does_match_expected () {
 
 mvn_install () {
   # on real execution we should only rely in git frf to push 
-  echo "Emulating jenkins build"
+  log "Emulating jenkins build"
   sleep 20
-  mvn install
+  _mvn install
 }
 
 # Function to check if a version is available in the Maven repository
 is_version_available() {
-  local project=$1
-  local version=$2
-  ! (get_missing_dependencies | grep -c $project)
+  local dep_project=$1
+  local dep_version=$2
+  ! (get_missing_dependencies | grep -c $dep_project)
   return $?
 }
 
@@ -130,7 +158,7 @@ wait_for_dependency_version() {
 # Function to get missing dependencies from pom.xml
 get_missing_dependencies() {
   # [WARNING] The POM for com.mycompany:my-lib1:jar:1.2.0 is missing, no dependency information available
-  mvn -U dependency:tree |  sed -E -n "s/.* for (.*) is missing, no dependency information available.*/\1/p"
+  _mvn -U dependency:tree |  sed -E -n "s/.* for (.*) is missing, no dependency information available.*/\1/p"
 }
 
 # check if a package match our domain
@@ -168,7 +196,6 @@ check_and_build_dependency() {
 
 # Function to check and push dependencies
 check_and_build_dependencies() {
-  local project=$1
   local missing_dependencies=$(get_missing_dependencies)
 
   if [[ "$missing_dependencies" != "" ]]; then
@@ -186,7 +213,8 @@ check_and_build_dependencies() {
     done
 
   fi
-  mvn -ntp verify -P-webapp
+  log "all dependencies ready: verifying"
+  _mvn -ntp verify -P-webapp
   return $?
 }
 
@@ -205,7 +233,7 @@ git_current_branch_is_release () {
 }
 
 get_current_version () {
-   mvn help:evaluate -Dexpression=project.version -q -DforceStdout
+  mvn help:evaluate -Dexpression=project.version -q -DforceStdout
 }
 
 
@@ -213,8 +241,8 @@ git_flow_hotfix_check () {
   local master_branch=$(git config gitflow.branch.master)
   local hotfix_prefix=$(git config gitflow.prefix.hotfix)
   local hotfix_branch="${hotfix_prefix}${expected_version}"
-  git checkout $hotfix_prefix  || return 3
-  git pull origin $hotfix_branch
+  _git checkout $hotfix_prefix  || return 3
+  _git pull origin $hotfix_branch
 
   # on uncommitted changes exit 
   if ! git diff-index --quiet HEAD -- ;    then
@@ -234,7 +262,7 @@ git_flow_release_check_and_start () {
   local develop_branch=$(git config gitflow.branch.develop)
   local release_prefix=$(git config gitflow.prefix.release)
 
-  git checkout $develop_branch && git pull origin $develop_branch || return 3
+  _git checkout $develop_branch && _git pull origin $develop_branch || return 3
   
   # on uncommitted changes exit 
   if ! git diff-index --quiet HEAD -- ;    then
@@ -249,7 +277,7 @@ git_flow_release_check_and_start () {
   fi
 
   if ! git_current_branch_is_release ;    then
-    git checkout $master_branch && git pull origin $master_branch || return 2
+    _git checkout $master_branch && _git pull origin $master_branch || return 2
     master_version=$(get_current_version)
 
     higher_version=$(echo -e "${master_version}\n${expected_version}" | sort -V -r | head -n 1)
@@ -260,8 +288,8 @@ git_flow_release_check_and_start () {
 
     # if the release branch of the expected version exists, use that, otherwise
     # start the release
-    git checkout "${release_prefix}${expected_version}" 2>/dev/null \
-      || git frs 
+    _git checkout "${release_prefix}${expected_version}" 2>/dev/null \
+      || _git frs 
   fi
   git_current_branch_is_release
   return $?
@@ -269,13 +297,13 @@ git_flow_release_check_and_start () {
 
 
 git_flow_release_finish () {
-  mvn_install && git frf
+  mvn_install && _git frf
   return $?
 }
 
 
 git_flow_hotfix_finish () {
-  mvn_install && git fhf
+  mvn_install && _git fhf
   return $?
 }
 
@@ -300,11 +328,11 @@ run_close_hotfix () {
 
 run_close_version () {
   if is_version_number_hotfix $expected_version ; then
-    log "closing release $expected_version"
-    run_close_release
-  else
     log "closing hotfix $expected_version"
     run_close_hotfix
+  else
+    log "closing release $expected_version"
+    run_close_release
   fi
 }
 

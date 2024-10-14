@@ -319,7 +319,8 @@ run_close_release () {
   git_flow_release_check_and_start || return 1
   # Check and push dependencies if necessary
   check_and_build_dependencies || return 2
-  git_flow_release_finish || return 3
+  git_flow_release_finish
+  return $?
 }
 
 
@@ -327,7 +328,8 @@ run_close_hotfix () {
   git_flow_hotfix_check
   # Check and push dependencies if necessary
   check_and_build_dependencies || return 2
-  git_flow_hotfix_finish  || return 3
+  git_flow_hotfix_finish  
+  return $?
 }
 
 run_close_version () {
@@ -338,6 +340,7 @@ run_close_version () {
     log "closing release $expected_version"
     run_close_release
   fi
+  return $?
 }
 
 # run the main 
@@ -379,7 +382,7 @@ main() {
   check_args $@
   declare_main_global_props $@
   cd $project_path
-  log "in $project expecting to compile <${expected_version}>"
+  log "in $project expecting to build <${expected_version}>"
 
   run_close_version_exclusively
 }

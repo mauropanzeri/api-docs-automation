@@ -240,6 +240,14 @@ get_current_version () {
   mvn help:evaluate -Dexpression=project.version -q -DforceStdout
 }
 
+is_uncommitted_changes () {
+  # on uncommitted changes exit 
+  if ! git diff-index --quiet HEAD -- ;    then
+    log_wrn "there are local modifications"  
+    return 1
+  fi   
+  return 0
+}
 
 is_curr_version_compatible (){
   local curr_version=$(get_current_version)
@@ -254,14 +262,10 @@ git_flow_hotfix_check () {
   local master_branch=$(git config gitflow.branch.master)
   local hotfix_prefix=$(git config gitflow.prefix.hotfix)
   local hotfix_branch="${hotfix_prefix}${expected_version}"
-  _git checkout $hotfix_prefix  || return 3
-  _git pull origin $hotfix_branch
+  _git checkout $hotfix_branch  || return 3
+  _git pull origin $hotfix_branch 2>&1
 
-  # on uncommitted changes exit 
-  if ! git diff-index --quiet HEAD -- ;    then
-    log_wrn "there are local modifications"  
-    return 1
-  fi   
+  is_uncommitted_changes || return 1
 
   is_curr_version_compatible || return 5
   return 0
@@ -290,16 +294,13 @@ git_flow_release_check_and_start () {
     fi
 
     _git checkout $develop_branch && _git pull origin $develop_branch || return 3    
-    # on uncommitted changes exit 
-    if ! git diff-index --quiet HEAD -- ;    then
-      log_wrn "there are local modifications"  
-      return 1
-    fi 
 
     is_curr_version_compatible || return 5
 
     _git frs 
   fi
+  is_uncommitted_changes || return 1
+  
   git_current_branch_is_release
   return $?
 }

@@ -121,6 +121,15 @@ mvn_install () {
   _mvn install
 }
 
+
+# Function to get missing dependencies from pom.xml
+get_missing_dependencies() {
+  # [WARNING] The POM for com.mycompany:my-lib1:jar:1.2.0 is missing, no dependency information available
+  _mvn -U dependency:tree |  sed -E -n  \
+    -e "s/.* for (.*) is missing, no dependency information available.*/\1/p" \
+    -e 's/.*Could not find artifact \(.*\) in.*/\1/p'
+}
+
 # Function to check if a version is available in the Maven repository
 is_version_available() {
   local dep_project=$1
@@ -156,13 +165,6 @@ wait_for_dependency_version() {
 
   log "$dep_project:$dep_version is now available in the Maven repository."
   return 0
-}
-
-
-# Function to get missing dependencies from pom.xml
-get_missing_dependencies() {
-  # [WARNING] The POM for com.mycompany:my-lib1:jar:1.2.0 is missing, no dependency information available
-  _mvn -U dependency:tree |  sed -E -n "s/.* for (.*) is missing, no dependency information available.*/\1/p"
 }
 
 # check if a package match our domain
@@ -300,7 +302,7 @@ git_flow_release_check_and_start () {
     _git frs 
   fi
   is_uncommitted_changes || return 1
-  
+
   git_current_branch_is_release
   return $?
 }

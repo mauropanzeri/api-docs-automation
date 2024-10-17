@@ -1,5 +1,7 @@
 #!/bin/bash
 # set  -x 
+set -euo pipefail
+
 script_name=$(basename $0)
 this_script=$(realpath $0)
 root_dir=$(dirname $this_script)
@@ -44,16 +46,24 @@ check_args () {
 #########
 
 
-logged_command () {
+logged_command() {
   prefix=$1
   shift
   command=$@
+  
   # Run the command and prefix each line of its output
   $command 2>&1 | while IFS= read -r line; do
     echo "$prefix$line"
   done
+
   # Capture the exit code of the command
-  return ${PIPESTATUS[0]}
+  exit_code=${PIPESTATUS[0]}
+  
+  if [[ $exit_code -ne 0 ]]; then
+    echo "${prefix}[ERROR] Command '$command' failed with exit code $exit_code"
+  fi
+  
+  return $exit_code
 }
 
 _date () {
@@ -227,7 +237,7 @@ check_and_build_dependencies() {
     missing_dependencies=$(get_missing_dependencies)
     missing_dependencies_retcode=$?
     if [[ "$missing_dependencies" == "" ]]; then
-      if [[ ! $missing_dependencies_retcode -eq 0 ]]; then
+      if [[ $missing_dependencies_retcode -ne 0 ]]; then
         log_err "No missing dependency found but maven still returned error $missing_dependencies_retcode"
         return $missing_dependencies_retcode
       fi

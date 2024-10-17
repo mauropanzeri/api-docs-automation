@@ -125,9 +125,13 @@ mvn_install () {
 # Function to get missing dependencies from pom.xml
 get_missing_dependencies() {
   # [WARNING] The POM for com.mycompany:my-lib1:jar:1.2.0 is missing, no dependency information available
-  _mvn -U dependency:tree |  sed -E -n  \
+  # ...
+  # [ERROR] Failed to execute goal on project reservationVolSpring: Could not resolve dependencies for project formation.addstones:reservationVolSpring:war:1.0-SNAPSHOT: Could not find artifact hani.reservationVol:reservationVol:jar:1.0-SNAPSHOT -> [Help 1]
+  _mvn -U dependency:tree \
+  |  sed -E -n  \
     -e "s/.* for (.*) is missing, no dependency information available.*/\1/p" \
-    -e 's/.*Could not find artifact \(.*\) in.*/\1/p'
+    -e 's/.*Could not find artifact (.*) in.*/\1/p' \
+  | grep -v "^$" | sort -u
 }
 
 # Function to check if a version is available in the Maven repository
@@ -202,13 +206,21 @@ check_and_build_dependency() {
 
 # Function to check and push dependencies
 check_and_build_dependencies() {
-  local missing_dependencies=$(get_missing_dependencies)
+  local missing_dependencies
 
-  if [[ "$missing_dependencies" != "" ]]; then
-    log_wrn "#################"  
-    log_wrn "[WARNING] missing dependencies: "  
-    log_wrn "$missing_dependencies"  
-    log_wrn "#################" 
+  # since the dependency in the [ERROR] appear one at a time, we need to iterate until 
+  # ok
+  while true; do
+    missing_dependencies=$(get_missing_dependencies)
+    if [[ "$missing_dependencies" == "" ]]; then
+      break
+    fi
+
+    log_wrn "#################"
+    log_wrn "[WARNING] missing dependencies: "
+    log_wrn "$missing_dependencies"
+    log_wrn "#################"
+
     for dep in $missing_dependencies; do
       check_and_build_dependency $dep &
     done
@@ -217,12 +229,13 @@ check_and_build_dependencies() {
     for dep in $missing_dependencies; do
       wait_for_dependency_version $dep
     done
+  done
 
-  fi
   log "all dependencies ready: verifying"
   _mvn -ntp verify -P-webapp
   return $?
 }
+
 
 #########
 ## Git

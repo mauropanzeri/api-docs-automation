@@ -123,17 +123,28 @@ mvn_install () {
 
 
 # Function to get missing dependencies from pom.xml
+# [WARNING] The POM for com.mycompany:my-lib1:jar:1.2.0 is missing, no dependency information available
+# ...
+# [ERROR] Failed to execute goal on project reservationVolSpring: Could not resolve dependencies for project formation.addstones:reservationVolSpring:war:1.0-SNAPSHOT: Could not find artifact hani.reservationVol:reservationVol:jar:1.0-SNAPSHOT -> [Help 1]
+# => 
+# com.mycompany:my-lib1:jar:1.2.0
+# formation.addstones:reservationVolSpring:war:1.0-SNAPSHOT
 get_missing_dependencies() {
-  # [WARNING] The POM for com.mycompany:my-lib1:jar:1.2.0 is missing, no dependency information available
-  # ...
-  # [ERROR] Failed to execute goal on project reservationVolSpring: Could not resolve dependencies for project formation.addstones:reservationVolSpring:war:1.0-SNAPSHOT: Could not find artifact hani.reservationVol:reservationVol:jar:1.0-SNAPSHOT -> [Help 1]
-  _mvn -U dependency:tree \
-  |  sed -E -n  \
+  # Run the Maven command and capture the output and error code
+  mvn_output=$(mvn -U dependency:tree 2>&1)
+  mvn_error_code=$?
+
+  # Extract missing dependencies from the Maven output
+  missing_dependencies=$(echo "$mvn_output" \
+    | sed -E -n  \
     -e "s/.* for (.*) is missing, no dependency information available.*/\1/p" \
     -e 's/.*Could not find artifact (.*) in.*/\1/p' \
-  | grep -v "^$" | sort -u
+    | grep -v "^$" | sort -u)
+  
+  # Print the missing dependencies and error code
+  echo "$missing_dependencies"
+  return $mvn_error_code
 }
-
 # Function to check if a version is available in the Maven repository
 is_version_available() {
   local dep_project=$1
@@ -182,6 +193,7 @@ build_dependency () {
   local dep_project_path="$1"
   local dep_version="$2"
   $this_script $dep_project_path $dep_version
+  return $?
 }
 
 # check_and_build_dependency com.mycompany:app:jar:1.0.0
@@ -197,6 +209,7 @@ check_and_build_dependency() {
       local dep_project_path="$root_dir/${my_projects[$dep_project]}"
       log launching build $dep_project_path in parallel
       build_dependency $dep_project_path $dep_version
+      return $?
     else 
       log_err "cant build $dependency_definition package unknown" >&2
       return 1
@@ -212,7 +225,12 @@ check_and_build_dependencies() {
   # ok
   while true; do
     missing_dependencies=$(get_missing_dependencies)
+    missing_dependencies_retcode=$?
     if [[ "$missing_dependencies" == "" ]]; then
+      if [[ ! $missing_dependencies_retcode -eq 0 ]]; then
+        log_err "No missing dependency found but maven still returned error $missing_dependencies_retcode"
+        return $missing_dependencies_retcode
+      fi
       break
     fi
 
